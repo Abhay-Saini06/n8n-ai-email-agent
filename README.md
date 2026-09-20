@@ -70,7 +70,7 @@ Send an email to the Internship group.
 5. Update the Excel file path in the workflow.
 6. Run the workflow.
 
-> **Note:** API credentials and personal contact information are not included in this repository.
+> **Note:** `sample_contacts.xlsx` is included as a demonstration contact database. Replace it with your own contact file when running the workflow.
 
 ## 🔐 Security
 
@@ -91,8 +91,9 @@ Users must configure their own credentials before running the workflow.
 n8n-ai-email-agent/
 │
 ├── workflow.json
-├── README.md
-└── screenshots/
+├── sample_contacts.xlsx
+├── workflow.png
+└── README.md
 ```
 
 ## 🔮 Future Improvements
