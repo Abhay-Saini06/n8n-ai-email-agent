@@ -1,0 +1,178 @@
+{
+  "name": "Email Sender",
+  "nodes": [
+    {
+      "parameters": {
+        "sendTo": "={{ $json.Email }}",
+        "subject": "={{ $json.subject }}",
+        "message": "={{ $json.body }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1120,
+        0
+      ],
+      "name": "Send a message"
+    },
+    {
+      "parameters": {
+        "fileSelector": "YOUR_CONTACTS_FILE_PATH/AI_Email_Agent_Contacts_50.xlsx",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        512,
+        0
+      ],
+      "name": "Read/Write Files from Disk"
+    },
+    {
+      "parameters": {
+        "operation": "xlsx",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        704,
+        0
+      ],
+      "name": "Extract from File"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.5,
+      "position": [
+        0,
+        0
+      ],
+      "name": "When chat message received"
+    },
+    {
+      "parameters": {
+        "options": {
+          "systemMessage": "You are an email assistant. Read the user's request and reply with ONLY a JSON object. No explanation, no markdown.\n\n{\"target_type\": \"person | list | range | group | department | everyone\", \"target_value\": \"<see rules>\", \"subject\": \"<short subject line>\", \"body\": \"<email body in simple HTML using <p> tags>\"}\n\nRules:\n- person: one person. target_value is their name or email.\n- list: several named people. target_value is their names separated by commas, e.g. \"Priya Verma, Aman Singh\".\n- range: people by ID number, e.g. \"the first 10\" or \"1 to 10\". target_value must be \"start-end\", e.g. \"1-10\".\n- department: target_value is a Role such as HR.\n- group: target_value is a Category such as Internship.\n- everyone: target_value is an empty string.\n- Write the subject and body yourself in a professional, friendly tone."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        176,
+        0
+      ],
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "jsCode": "let raw = $('AI Agent').first().json.output || '';\nraw = raw.replace(/<think>[\\s\\S]*?<\\/think>/g, '');\nconst match = raw.match(/\\{[\\s\\S]*\\}/);\nif (!match) throw new Error('AI did not return JSON. Got: ' + raw);\nconst req = JSON.parse(match[0]);\n\nconst MAX_EMAILS = 50; // safety cap, lower it if you like\n\nconst type = (req.target_type || '').toLowerCase().trim();\nconst value = String(req.target_value || '').toLowerCase().trim();\nconst get = (r, k) => String(r.json[k] ?? '').toLowerCase().trim();\n\nlet rows = $input.all();\n\nif (type === 'person') {\n  rows = rows.filter(r => get(r, 'Name').includes(value) || get(r, 'Email') === value);\n} else if (type === 'list') {\n  const names = value.split(',').map(s => s.trim()).filter(Boolean);\n  rows = rows.filter(r => names.some(n => get(r, 'Name').includes(n) || get(r, 'Email') === n));\n} else if (type === 'range') {\n  const [a, b] = value.split('-').map(s => parseInt(s.trim(), 10));\n  if (isNaN(a) || isNaN(b)) throw new Error('Bad range: ' + value);\n  rows = rows.filter(r => Number(r.json.ID) >= a && Number(r.json.ID) <= b);\n} else if (type === 'department') {\n  rows = rows.filter(r => get(r, 'Role').includes(value) || get(r, 'Company') === value);\n} else if (type === 'group') {\n  rows = rows.filter(r => get(r, 'Category') === value || get(r, 'Status') === value);\n} else if (type !== 'everyone') {\n  throw new Error('Unknown target_type: ' + type);\n}\n\n// Skip fake placeholder addresses so they don't bounce\nrows = rows.filter(r => !get(r, 'Email').endsWith('@example.com'));\n\nif (rows.length === 0) throw new Error('No contacts matched ' + type + ': ' + value);\nif (rows.length > MAX_EMAILS) throw new Error('Too many recipients: ' + rows.length);\n\nreturn rows.map(r => ({ json: { ...r.json, subject: req.subject, body: req.body } }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        928,
+        0
+      ],
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-oss-20b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        48,
+        208
+      ],
+      "name": "Groq Chat Model"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Send a message": {
+      "main": [
+        []
+      ]
+    },
+    "Read/Write Files from Disk": {
+      "main": [
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Read/Write Files from Disk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "nodeGroups": [],
+  "tags": []
+}
